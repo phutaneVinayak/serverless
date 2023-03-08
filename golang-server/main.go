@@ -2,8 +2,10 @@ package main
 
 import (
 	// "errors"
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	// "io/ioutil"
@@ -12,6 +14,9 @@ import (
 	"github.com/gorilla/mux"
 
 	pubnub "github.com/pubnub/go/v7"
+
+	"github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/snappy"
 	// "os"
 )
 
@@ -36,6 +41,28 @@ var msg = map[string]interface{}{
 	"msg": "Hello worlds",
 }
 
+var writer *kafka.Writer
+
+func Configure(kafkaBrokerUrls []string, clientId string, topic string) (w *kafka.Writer, err error) {
+	dialer := &kafka.Dialer{
+		Timeout:  10 * time.Second,
+		ClientID: clientId,
+	}
+
+	config := kafka.WriterConfig{
+		Brokers:          kafkaBrokerUrls,
+		Topic:            topic,
+		Balancer:         &kafka.LeastBytes{},
+		Dialer:           dialer,
+		WriteTimeout:     10 * time.Second,
+		ReadTimeout:      10 * time.Second,
+		CompressionCodec: snappy.NewCompressionCodec(),
+	}
+	w = kafka.NewWriter(config)
+	writer = w
+	return w, nil
+}
+
 func getRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Println("This is server")
@@ -49,6 +76,12 @@ func wrapperHandler(pn *pubnub.PubNub) http.HandlerFunc {
 		var requestPayload Payload
 		_ = json.NewDecoder(r.Body).Decode(&requestPayload)
 		fmt.Println("This is value from user %v", requestPayload)
+
+		// send event and wait for response
+		/**
+		This function will create one unique channel ID and pass it to sendJobEvent function, than this channel id will send to listener to wait for event
+		*/
+		sendJobEvent("12344", requestPayload)
 
 		// pubnub for listener
 		listener := pubnub.NewListener()
@@ -86,8 +119,6 @@ func wrapperHandler(pn *pubnub.PubNub) http.HandlerFunc {
 
 		fmt.Println("Before doneRececi check")
 		<-doneReceviced
-
-		// fmt.Println("msgResponse", msgResponse)
 	}
 }
 
@@ -96,6 +127,32 @@ func getExecution(w http.ResponseWriter, r *http.Request) {
 	var requestPayload Payload
 	_ = json.NewDecoder(r.Body).Decode(&requestPayload)
 	fmt.Println("This is value from user %v", requestPayload)
+}
+
+func sendJobEvent(channelEvent string, payload Payload) {
+	parent := context.Background()
+	defer parent.Done()
+
+	formInBytes, err := json.Marshal(payload)
+
+	if err != nil {
+		fmt.Sprintf("error while marshalling json: %s", err.Error())
+		return
+	}
+
+	message := kafka.Message{
+		Key:   nil,
+		Value: formInBytes,
+		Time:  time.Now(),
+	}
+
+	err = writer.WriteMessages(parent, message)
+
+	if err != nil {
+		fmt.Sprintf("error while push message into kafka: %s", err.Error())
+		return
+	}
+
 }
 
 func main() {
@@ -116,6 +173,16 @@ func main() {
 
 		fmt.Println(response, status, err1)
 	})
+
+	// init kafka
+	// strings.Split(kafkaBrokerUrl, ","), kafkaClientId, kafkaTopic
+	var kafkaBrokerUrl = "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/knative-eventing/kafka-event-broker"
+	kafkaProducer, err2 := Configure(strings.Split(kafkaBrokerUrl, ","), "kafkaClientId", "kafkaTopic")
+	if err2 != nil {
+		fmt.Println("unable to configure kafka")
+		return
+	}
+	defer kafkaProducer.Close()
 
 	routes := mux.NewRouter()
 
