@@ -122,13 +122,6 @@ func wrapperHandler(pn *pubnub.PubNub) http.HandlerFunc {
 	}
 }
 
-func getExecution(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	var requestPayload Payload
-	_ = json.NewDecoder(r.Body).Decode(&requestPayload)
-	fmt.Println("This is value from user %v", requestPayload)
-}
-
 func sendJobEvent(channelEvent string, payload Payload) {
 	parent := context.Background()
 	defer parent.Done()
@@ -157,8 +150,8 @@ func sendJobEvent(channelEvent string, payload Payload) {
 
 func main() {
 	config := pubnub.NewConfigWithUserId("myUniqueUserId")
-	config.SubscribeKey = "x-x-x-x-x"
-	config.PublishKey = "x-x-x-x-x-x-x-x"
+	config.SubscribeKey = "x-x-x-x-x-x-x-x-x-x-x"
+	config.PublishKey = "x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x"
 
 	pn := pubnub.NewPubNub(config)
 
@@ -176,7 +169,7 @@ func main() {
 
 	// init kafka
 	// strings.Split(kafkaBrokerUrl, ","), kafkaClientId, kafkaTopic
-	var kafkaBrokerUrl = "http://kafka-broker-ingress.knative-eventing.svc.cluster.local/knative-eventing/kafka-event-broker"
+	var kafkaBrokerUrl = "http://127.0.0.1:9092"
 	kafkaProducer, err2 := Configure(strings.Split(kafkaBrokerUrl, ","), "kafkaClientId", "kafkaTopic")
 	if err2 != nil {
 		fmt.Println("unable to configure kafka")
@@ -184,6 +177,10 @@ func main() {
 	}
 	defer kafkaProducer.Close()
 
+	// fmt.Println("xxxxxxxxxxxxxxxxxxxxxxxx")
+	// var demo Payload
+	// sendJobEvent("1213", demo)
+	// fmt.Println("xxxxxxxxxxxxxxxxxxxxxxxx")
 	routes := mux.NewRouter()
 
 	routes.HandleFunc("/", getRoot)
